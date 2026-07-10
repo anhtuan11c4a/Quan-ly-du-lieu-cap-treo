@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Quản Lý Sự Cố Cáp Treo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800">CABLE CAR OPS <span class="text-blue-600">DASHBOARD</span></h1>
+                <p class="text-gray-500">Hệ thống theo dõi và quản lý sự cố vận hành</p>
+            </div>
+            <div id="currentTime" class="text-right font-medium text-gray-600"></div>
+        </header>
+
+        <!-- Dashboard Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 col-span-1">
+                <h2 class="text-lg font-semibold mb-4 text-gray-700">Tổng quan Downtime (Phút)</h2>
+                <canvas id="downtimeChart" height="250"></canvas>
+            </div>
+            
+            <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 class="text-lg font-semibold mb-4 text-gray-700">Nhập báo cáo sự cố mới</h2>
+                <form id="incidentForm" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Tuyến cáp</label>
+                        <select id="cableLine" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2 bg-gray-50 border focus:ring-blue-500 focus:border-blue-500" required>
+                            <option value="">-- Chọn tuyến --</option>
+                            <option value="Tuyến Fansipan">Tuyến Fansipan</option>
+                            <option value="Tuyến Mường Hoa">Tuyến Mường Hoa</option>
+                            <option value="Tuyến Đỗ Quyên">Tuyến Đỗ Quyên</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Thời gian dừng (phút)</label>
+                        <input type="number" id="downtime" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2 bg-gray-50 border focus:ring-blue-500 focus:border-blue-500" placeholder="Ví dụ: 15" required>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700">Nguyên nhân</label>
+                        <input type="text" id="cause" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2 bg-gray-50 border focus:ring-blue-500 focus:border-blue-500" placeholder="Nêu nguyên nhân sự cố..." required>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700">Cách xử lý</label>
+                        <textarea id="solution" rows="2" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2 bg-gray-50 border focus:ring-blue-500 focus:border-blue-500" placeholder="Các bước đã thực hiện..." required></textarea>
+                    </div>
+                    <div class="md:col-span-2 flex justify-end">
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition duration-200 flex items-center">
+                            <i class="fas fa-plus mr-2"></i> Ghi nhận sự cố
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Table Section -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="p-6 border-b border-gray-100 flex justify-between items-center">
+                <h2 class="text-lg font-semibold text-gray-700">Danh sách sự cố gần đây</h2>
+                <button onclick="exportData()" class="text-sm text-green-600 hover:underline font-medium">Xuất báo cáo Excel</button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-4 text-sm font-semibold text-gray-600">Ngày/Giờ</th>
+                            <th class="px-6 py-4 text-sm font-semibold text-gray-600">Tuyến cáp</th>
+                            <th class="px-6 py-4 text-sm font-semibold text-gray-600">Nguyên nhân</th>
+                            <th class="px-6 py-4 text-sm font-semibold text-gray-600">Xử lý</th>
+                            <th class="px-6 py-4 text-sm font-semibold text-gray-600">Downtime</th>
+                            <th class="px-6 py-4 text-sm font-semibold text-gray-600 text-center">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="incidentTableBody" class="divide-y divide-gray-100">
+                        <!-- Data will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Khởi tạo dữ liệu từ LocalStorage hoặc mống rỗng
+        let incidents = JSON.parse(localStorage.getItem('cableIncidents')) || [
+            { id: 1, date: '2023-10-27 08:30', line: 'Tuyến Fansipan', cause: 'Gió mạnh cấp 7', solution: 'Tạm dừng 15p, chạy lại tốc độ thấp', downtime: 15 },
+            { id: 2, date: '2023-10-27 10:15', line: 'Tuyến Mường Hoa', cause: 'Lỗi cảm biến cửa', solution: 'Thay thế cảm biến dự phòng', downtime: 10 }
+        ];
+
+        const form = document.getElementById('incidentForm');
+        let myChart;
+
+        // Cập nhật đồng hồ
+        setInterval(() => {
+            document.getElementById('currentTime').innerText = new Date().toLocaleString('vi-VN');
+        }, 1000);
+
+        // Hàm render bảng
+        function renderTable() {
+            const tbody = document.getElementById('incidentTableBody');
+            tbody.innerHTML = '';
+            
+            incidents.slice().reverse().forEach((item) => {
+                const row = `
+                    <tr class="hover:bg-gray-50 transition">
+                        <td class="px-6 py-4 text-sm text-gray-600">${item.date}</td>
+                        <td class="px-6 py-4 text-sm font-bold text-blue-600">${item.line}</td>
+                        <td class="px-6 py-4 text-sm text-gray-600">${item.cause}</td>
+                        <td class="px-6 py-4 text-sm text-gray-600">${item.solution}</td>
+                        <td class="px-6 py-4 text-sm">
+                            <span class="px-2 py-1 bg-red-100 text-red-600 rounded-full font-medium">${item.downtime} phút</span>
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            <button onclick="deleteIncident(${item.id})" class="text-gray-400 hover:text-red-500">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+            updateChart();
+        }
+
+        // Hàm xử lý biểu đồ
+        function updateChart() {
+            const summary = {};
+            incidents.forEach(item => {
+                summary[item.line] = (summary[item.line] || 0) + parseInt(item.downtime);
+            });
+
+            const labels = Object.keys(summary);
+            const data = Object.values(summary);
+
+            if (myChart) {
+                myChart.destroy();
+            }
+
+            const ctx = document.getElementById('downtimeChart').getContext('2d');
+            myChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+
+        // Xử lý thêm sự cố
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newIncident = {
+                id: Date.now(),
+                date: new Date().toLocaleString('vi-VN', {hour12: false}).replace(',', ''),
+                line: document.getElementById('cableLine').value,
+                downtime: document.getElementById('downtime').value,
+                cause: document.getElementById('cause').value,
+                solution: document.getElementById('solution').value
+            };
+
+            incidents.push(newIncident);
+            localStorage.setItem('cableIncidents', JSON.stringify(incidents));
+            form.reset();
+            renderTable();
+        });
+
+        // Xóa sự cố
+        function deleteIncident(id) {
+            if(confirm('Bạn có chắc chắn muốn xóa bản ghi này?')) {
+                incidents = incidents.filter(i => i.id !== id);
+                localStorage.setItem('cableIncidents', JSON.stringify(incidents));
+                renderTable();
+            }
+        }
+
+        // Giả lập xuất Excel
+        function exportData() {
+            alert('Đang trích xuất dữ liệu ra file Excel (.xlsx)...');
+        }
+
+        // Khởi tạo ban đầu
+        renderTable();
+    </script>
+</body>
+</html>
